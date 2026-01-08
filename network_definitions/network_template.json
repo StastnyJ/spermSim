@@ -1,0 +1,140 @@
+{
+  "inputs": [
+    {
+      "name": "chem_signal_0",
+      "initial_value": 0.0,
+      "bias": 0.0,
+      "activation": "sigmoid",
+      "connections": []
+    },
+    {
+      "name": "chem_signal_1",
+      "initial_value": 0.0,
+      "bias": 0.0,
+      "activation": "sigmoid",
+      "connections": []
+    },
+    {
+      "name": "chem_signal_2",
+      "initial_value": 0.0,
+      "bias": 0.0,
+      "activation": "sigmoid",
+      "connections": []
+    },
+    {
+      "name": "chem_signal_3",
+      "initial_value": 0.0,
+      "bias": 0.0,
+      "activation": "sigmoid",
+      "connections": []
+    },
+    {
+      "name": "obstacle_signal_0",
+      "initial_value": 0.0,
+      "bias": 0.0,
+      "activation": "sigmoid",
+      "connections": []
+    },
+    {
+      "name": "obstacle_signal_1",
+      "initial_value": 0.0,
+      "bias": 0.0,
+      "activation": "sigmoid",
+      "connections": []
+    },
+    {
+      "name": "obstacle_signal_2",
+      "initial_value": 0.0,
+      "bias": 0.0,
+      "activation": "sigmoid",
+      "connections": []
+    },
+    {
+      "name": "obstacle_signal_3",
+      "initial_value": 0.0,
+      "bias": 0.0,
+      "activation": "sigmoid",
+      "connections": []
+    },
+    {
+      "name": "distance_to_danger_0",
+      "initial_value": 0.0,
+      "bias": 0.0,
+      "activation": "sigmoid",
+      "connections": []
+    },
+    {
+      "name": "distance_to_danger_1",
+      "initial_value": 0.0,
+      "bias": 0.0,
+      "activation": "sigmoid",
+      "connections": []
+    },
+    {
+      "name": "distance_to_danger_2",
+      "initial_value": 0.0,
+      "bias": 0.0,
+      "activation": "sigmoid",
+      "connections": []
+    },
+    {
+      "name": "distance_to_danger_3",
+      "initial_value": 0.0,
+      "bias": 0.0,
+      "activation": "sigmoid",
+      "connections": []
+    },
+    {
+      "name": "energy",
+      "initial_value": 1.0,
+      "bias": 0.0,
+      "activation": "sigmoid",
+      "connections": []
+    },
+    {
+      "name": "force_flag_0",
+      "initial_value": 0.0,
+      "bias": 0.0,
+      "activation": "sigmoid",
+      "connections": []
+    },
+    {
+      "name": "force_flag_1",
+      "initial_value": 0.0,
+      "bias": 0.0,
+      "activation": "sigmoid",
+      "connections": []
+    },
+    {
+      "name": "force_flag_2",
+      "initial_value": 0.0,
+      "bias": 0.0,
+      "activation": "sigmoid",
+      "connections": []
+    },
+    {
+      "name": "force_flag_3",
+      "initial_value": 0.0,
+      "bias": 0.0,
+      "activation": "sigmoid",
+      "connections": []
+    }
+  ],
+  "internal_genes": [],
+  "outputs": [
+    {
+      "name": "rotation",
+      "initial_value": 0.5,
+      "bias": 0.5,
+      "activation": "sigmoid",
+      "connections": []
+    },
+    {
+      "name": "speed",
+      "initial_value": 0.5,
+      "bias": 0.3,
+      "activation": "sigmoid",
+      "connections": []
+    }
+  ]
+}
