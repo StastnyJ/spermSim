@@ -9,7 +9,7 @@ def main():
     parser.add_argument(
         '--grn',
         type=str,
-        default='network_definitions/example_network.json',
+        default='network_definitions/stupid_network_example.json',
         help='Cesta k JSON souboru s konfigurací GRN'
     )
     parser.add_argument(
