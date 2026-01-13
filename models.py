@@ -76,7 +76,8 @@ class Sperm(Element):
             self.position[1] + speed * dt * np.sin(self.orientation) * self._max_speed
         )
         self.energy = max(self.energy - self.energy_decay * dt * (speed + rotation), 0.0)
-        self.energy = min(self.energy_recovery * dt + self.energy, 1.0)
+        if self.energy > 0:
+            self.energy = min(self.energy_recovery * dt + self.energy, 1.0)
 
 class WhiteBloodCell(Element):
     def __init__(
@@ -202,6 +203,9 @@ class Environment:
             if self.sperm_cell and self.sperm_cell.is_colliding(danger):
                 return 'sperm_destroyed'
         
+        if self.sperm_cell and self.sperm_cell.energy <= 0:
+            return 'out_of_energy'
+        
         for obstacle in self.obstacles:
             if self.sperm_cell and self.sperm_cell.is_colliding(obstacle):
                 self.sperm_cell.position = closest_point_on_circle(obstacle.position, obstacle.radius + self.sperm_cell.radius, self.sperm_cell.position)
@@ -212,9 +216,6 @@ class Environment:
 
         # TODO handle flow fields
     
-        if self.sperm_cell.energy <= 0:
-            return 'out_of_energy'
-
         if self.sperm_cell.position[0] < self.sperm_cell.radius:
             self.sperm_cell.position = (self.sperm_cell.radius, self.sperm_cell.position[1])
         if self.sperm_cell.position[0] > self.width - self.sperm_cell.radius:
