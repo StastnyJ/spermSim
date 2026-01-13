@@ -81,17 +81,29 @@ class Sperm(Element):
 
 class WhiteBloodCell(Element):
     def __init__(
-            self, position: Tuple[float, float] = (0, 0), radius: float = 1.0, max_speed: float = 1.0):
+            self, position: Tuple[float, float] = (0, 0), radius: float = 1.0, max_speed: float = 1.0, sensor_range: float = 100.0):
         super().__init__(position, radius)
         self._max_speed: float = max_speed
+        self.sensor_range: float = sensor_range
+        self.orientation: float = 0.0
 
     def update(self, dt: float, sperm: Sperm):
+        # Zjistíme vzdálenost ke spermii
         dx, dy = sperm.position[0] - self.position[0], sperm.position[1] - self.position[1]
-        dx, dy = self._max_speed * dx / np.sqrt(dx ** 2 + dy ** 2), self._max_speed * dy / np.sqrt(dx ** 2 + dy ** 2)
-        self.position = (
-            self.position[0] + dx * dt,
-            self.position[1] + dy * dt
-        )
+        distance = np.sqrt(dx ** 2 + dy ** 2)
+        
+        # Pokud je spermie mimo kruhový dosah, nehýbeme se
+        if distance > self.sensor_range:
+            return
+        
+        # Jinak se pohybujeme směrem ke spermii
+        if distance > 0:
+            dx, dy = self._max_speed * dx / distance, self._max_speed * dy / distance
+            self.position = (
+                self.position[0] + dx * dt,
+                self.position[1] + dy * dt
+            )
+            self.orientation = np.arctan2(dy, dx)
 
 
 class Sensor:
@@ -100,13 +112,14 @@ class Sensor:
         self.range: float = range
         self.relative_position: Tuple[float, float] = relative_position
         self.relative_orientation: float = relative_orientation
-    def get_absolute_position(self, cell: Sperm) -> Tuple[float, float, float]:
+    
+    def get_absolute_position(self, cell) -> Tuple[float, float, float]:
         abs_x = cell.position[0] + self.relative_position[0] * np.cos(cell.orientation) - self.relative_position[1] * np.sin(cell.orientation)
         abs_y = cell.position[1] + self.relative_position[0] * np.sin(cell.orientation) + self.relative_position[1] * np.cos(cell.orientation)
         abs_orientation = cell.orientation + self.relative_orientation
         return abs_x, abs_y, abs_orientation
 
-    def is_in_range(self, cell: Sperm, element: Element) -> bool:
+    def is_in_range(self, cell, element: Element) -> bool:
         abs_x, abs_y, abs_orientation = self.get_absolute_position(cell)
         dx = element.position[0] - abs_x
         dy = element.position[1] - abs_y
@@ -152,7 +165,7 @@ class Environment:
             ovum=Element(position=tuple(data["ovum_position"]), radius=data["ovum_radius"]),
             obstacles=[Element(position=(o["x"], o["y"]), radius=o["radius"]) for o in data["obstacles"]],
             dangers=[Element(position=(d["x"], d["y"]), radius=d["radius"]) for d in data["dangers"]],
-            white_blood_cells=[WhiteBloodCell(position=(wbc["x"], wbc["y"]), radius=5) for wbc in data["white_cells"]],
+            white_blood_cells=[WhiteBloodCell(position=(wbc["x"], wbc["y"]), radius=15, sensor_range=150.0) for wbc in data["white_cells"]],
             # TODO flow fields
         )
 

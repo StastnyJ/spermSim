@@ -51,9 +51,7 @@ class Visualization:
                 frame.blit(sheet, (0, 0), (0, i * self.frame_size, self.frame_size, self.frame_size))
                 self.sperm_frames.append(frame)
             
-            print(f"Animation sheet načten: {self.num_frames} framů")
         except Exception as e:
-            print(f"Nepodařilo se načíst animation sheet: {e}")
             self.sperm_frames = []
             self.frame_size = 32
             self.num_frames = 1
@@ -207,6 +205,13 @@ class Visualization:
                 self._add_dirty_polygon_rect(polygon_points)
                 pg.draw.polygon(self.screen, (255, 200, 200), polygon_points)
             
+            # Zobrazení kruhového dosahu bílých krvinek
+            for wbc in self.environment.white_blood_cells:
+                wbc_pos = self._env_to_screen(wbc.position)
+                sensor_radius = int(wbc.sensor_range * self.scale)
+                self._add_dirty_rect(wbc_pos, sensor_radius)
+                pg.draw.circle(self.screen, (200, 100, 100), wbc_pos, sensor_radius, 2)
+            
         ovum_pos = self._env_to_screen(self.environment.ovum.position)
         ovum_radius = int(self.environment.ovum.radius * self.scale)
         self._add_dirty_rect(ovum_pos, ovum_radius)
@@ -290,7 +295,8 @@ class Visualization:
         i = 0
 
         while True:
-            print(i)
+            if i%100 == 0:
+                print(i)
             for event in pg.event.get():
                 if event.type == pg.QUIT or (event.type == pg.KEYDOWN and event.key == pg.K_ESCAPE) or (event.type == pg.KEYDOWN and event.key == pg.K_q):
                     pg.quit()
