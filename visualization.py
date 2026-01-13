@@ -22,15 +22,41 @@ class Visualization:
         self._viz_graph_sent = False
         self._viz_frame = 0
         
-        # Pro optimalizaci vykreslování - sledování dirty rectangles
         self.dirty_rects: List[pg.Rect] = []
         self.prev_dirty_rects: List[pg.Rect] = []
-        self.full_redraw = True  # První frame vždy celý
-        self.frame_counter = 0  # Počítadlo snímků pro periodický full redraw
+        self.full_redraw = True 
+        self.frame_counter = 0
         self.last_screen_size = (int(self.environment.width * self.scale), int(self.environment.height * self.scale))
+        
+        self._load_sperm_animation()
+        self.animation_frame = 0
+        self.animation_speed = 0.01
 
     def _env_to_screen(self, position: Tuple[float, float]) -> Tuple[int, int]:
         return int(position[0] * self.scale), int(position[1] * self.scale)
+    
+    def _load_sperm_animation(self):
+        import os
+        animation_path = os.path.join(os.path.dirname(__file__), 'assets', 'sperm_animation.png')
+        
+        try:
+            sheet = pg.image.load(animation_path).convert_alpha()
+            
+            self.frame_size = 32
+            self.num_frames = 8
+            
+            self.sperm_frames = []
+            for i in range(self.num_frames):
+                frame = pg.Surface((self.frame_size, self.frame_size), pg.SRCALPHA)
+                frame.blit(sheet, (0, 0), (0, i * self.frame_size, self.frame_size, self.frame_size))
+                self.sperm_frames.append(frame)
+            
+            print(f"Animation sheet načten: {self.num_frames} framů")
+        except Exception as e:
+            print(f"Nepodařilo se načíst animation sheet: {e}")
+            self.sperm_frames = []
+            self.frame_size = 32
+            self.num_frames = 1
 
     def _make_grn_payload_full(self) -> Dict[str, Any]:
         grn = self.environment.sperm_cell._grn
@@ -103,7 +129,6 @@ class Visualization:
             (radius + margin) * 2,
             (radius + margin) * 2
         )
-        # Ořežeme rectangle na hranice obrazovky
         screen_rect = self.screen.get_rect()
         rect = rect.clip(screen_rect)
         if rect.width > 0 and rect.height > 0:
@@ -118,7 +143,6 @@ class Visualization:
         max_x = max(x1, x2) + width + margin
         max_y = max(y1, y2) + width + margin
         rect = pg.Rect(min_x, min_y, max_x - min_x, max_y - min_y)
-        # Ořežeme rectangle na hranice obrazovky
         screen_rect = self.screen.get_rect()
         rect = rect.clip(screen_rect)
         if rect.width > 0 and rect.height > 0:
@@ -135,39 +159,31 @@ class Visualization:
         max_x = max(xs) + margin
         max_y = max(ys) + margin
         rect = pg.Rect(min_x, min_y, max_x - min_x, max_y - min_y)
-        # Ořežeme rectangle na hranice obrazovky
         screen_rect = self.screen.get_rect()
         rect = rect.clip(screen_rect)
         if rect.width > 0 and rect.height > 0:
             self.dirty_rects.append(rect)
 
     def _render(self):
-        # Inkrementujeme počítadlo snímků
         self.frame_counter += 1
         
-        # Kontrola velikosti obrazovky - pokud se změnila, full redraw
         current_size = self.screen.get_size()
         if current_size != self.last_screen_size:
             self.full_redraw = True
             self.last_screen_size = current_size
         
-        # Každých 100 snímků full redraw (pro jistotu)
         if self.frame_counter % 100 == 0:
             self.full_redraw = True
         
-        # Uchováme flag pro tento frame
         was_full_redraw = self.full_redraw
         
-        # Vyčistíme dirty rectangles pro tento frame
         self.dirty_rects = []
 
-        # Pokud je full redraw, překreslíme celou obrazovku
         if self.full_redraw:
             self.screen.fill((255, 255, 255))
             self.full_redraw = False
-            self.prev_dirty_rects = []  # Resetujeme předchozí dirty rects
+            self.prev_dirty_rects = []
         else:
-            # Překreslíme pouze oblasti z minulého framu (vyčistíme je bílou)
             for rect in self.prev_dirty_rects:
                 self.screen.fill((255, 255, 255), rect)
 
@@ -196,17 +212,41 @@ class Visualization:
         self._add_dirty_rect(ovum_pos, ovum_radius)
         pg.draw.circle(self.screen, (0, 255, 0), ovum_pos, ovum_radius)
 
+        # Vykreslení spermie s animací
         sperm_pos = self._env_to_screen(self.environment.sperm_cell.position)
         sperm_radius = int(self.environment.sperm_cell.radius * self.scale)
-        self._add_dirty_rect(sperm_pos, sperm_radius)
-        pg.draw.circle(self.screen, (0, 0, 255), sperm_pos, sperm_radius)
         
-        line_end = self._env_to_screen((
-            self.environment.sperm_cell.position[0] - (self.environment.sperm_cell.radius + 5) * np.cos(self.environment.sperm_cell.orientation),
-            self.environment.sperm_cell.position[1] - (self.environment.sperm_cell.radius + 5) * np.sin(self.environment.sperm_cell.orientation))
-        )
-        self._add_dirty_line_rect(sperm_pos, line_end, 2)
-        pg.draw.line(self.screen, (0, 0, 255), sperm_pos, line_end, 2)
+        if self.sperm_frames and len(self.sperm_frames) > 0:
+            speed = self.environment.sperm_cell._grn.get_output().get('speed', 0.0)
+            adaptive_animation_speed = speed * 0.1
+            
+            self.animation_frame += adaptive_animation_speed
+            if self.animation_frame >= self.num_frames:
+                self.animation_frame = 0
+            
+            current_frame = self.sperm_frames[int(self.animation_frame)]
+            
+            scaled_size = int(self.frame_size * self.scale)
+            scaled_frame = pg.transform.scale(current_frame, (scaled_size, scaled_size))
+            
+            angle_deg = -np.degrees(self.environment.sperm_cell.orientation)
+            rotated_frame = pg.transform.rotate(scaled_frame, angle_deg)
+            
+            frame_rect = rotated_frame.get_rect(center=sperm_pos)
+            
+            self._add_dirty_rect(sperm_pos, max(scaled_size, sperm_radius) + 10)
+            
+            self.screen.blit(rotated_frame, frame_rect)
+        else:
+            self._add_dirty_rect(sperm_pos, sperm_radius)
+            pg.draw.circle(self.screen, (0, 0, 255), sperm_pos, sperm_radius)
+            
+            line_end = self._env_to_screen((
+                self.environment.sperm_cell.position[0] - (self.environment.sperm_cell.radius + 5) * np.cos(self.environment.sperm_cell.orientation),
+                self.environment.sperm_cell.position[1] - (self.environment.sperm_cell.radius + 5) * np.sin(self.environment.sperm_cell.orientation))
+            )
+            self._add_dirty_line_rect(sperm_pos, line_end, 2)
+            pg.draw.line(self.screen, (0, 0, 255), sperm_pos, line_end, 2)
         
        
         for obstacle in self.environment.obstacles:
@@ -227,28 +267,15 @@ class Visualization:
             self._add_dirty_rect(wbc_pos, wbc_radius)
             pg.draw.circle(self.screen, (255, 0, 0), wbc_pos, wbc_radius)
         
-        # Sloučíme staré a nové dirty rectangles pro update
         all_dirty_rects = self.prev_dirty_rects + self.dirty_rects
         
-        # DEBUG: vypíšeme info o dirty rectangles
-        if self.frame_counter <= 5 or self.frame_counter % 100 == 0:
-            print(f"Frame {self.frame_counter}: full_redraw={was_full_redraw}, prev_rects={len(self.prev_dirty_rects)}, new_rects={len(self.dirty_rects)}")
-            if len(all_dirty_rects) > 0 and len(all_dirty_rects) < 20:
-                for i, rect in enumerate(all_dirty_rects):
-                    print(f"  Rect {i}: {rect}")
-        
-        # Aktualizujeme obrazovku
         if was_full_redraw:
-            # Při full redraw aktualizujeme celou obrazovku
             pg.display.flip()
         elif all_dirty_rects:
-            # Jinak aktualizujeme jen dirty rectangles
             pg.display.update(all_dirty_rects)
         else:
-            # Fallback - pokud z nějakého důvodu nejsou dirty rects
             pg.display.flip()
         
-        # Uložíme dirty rectangles pro příští frame
         self.prev_dirty_rects = self.dirty_rects[:]
 
     def _step(self, dt: float) -> bool:
@@ -270,19 +297,19 @@ class Visualization:
                     break
                 if event.type == pg.KEYDOWN and event.key == pg.K_s:
                     self.show_sensors = not self.show_sensors
-                    self.full_redraw = True  # Při změně zobrazení senzorů překreslíme vše
+                    self.full_redraw = True 
                 if event.type == pg.KEYDOWN and event.key == pg.K_SPACE:
                     self.running = not self.running
                 if event.type == pg.KEYDOWN and (event.key == pg.K_PLUS or event.key == pg.K_EQUALS or event.key == pg.K_KP_PLUS):
                     self.scale += 0.1
                     self.screen = pg.display.set_mode((int(self.environment.width * self.scale), int(self.environment.height * self.scale)))
                     self.last_screen_size = self.screen.get_size()
-                    self.full_redraw = True  # Při změně velikosti překreslíme vše
+                    self.full_redraw = True
                 if event.type == pg.KEYDOWN and (event.key == pg.K_MINUS or event.key == pg.K_KP_MINUS):
                     self.scale = max(0.1, self.scale - 0.1)
                     self.screen = pg.display.set_mode((int(self.environment.width * self.scale), int(self.environment.height * self.scale)))
                     self.last_screen_size = self.screen.get_size()
-                    self.full_redraw = True  # Při změně velikosti překreslíme vše
+                    self.full_redraw = True
                 if event.type == pg.KEYDOWN and (event.key == pg.K_KP_ENTER or event.key == pg.K_RETURN) and not self.running:
                     i += 1
                     if not self._step(self.dt):
