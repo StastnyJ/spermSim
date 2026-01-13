@@ -14,11 +14,10 @@ class ActivationFunctions:
     
     @staticmethod
     def hill(x: float, n: float = 2.0, K: float = 0.5) -> float:
-        if x < 0:
-            return 0.0
-        x_n = x ** n
+        x_n = abs(x) ** n
         K_n = K ** n
-        return x_n / (K_n + x_n)
+        result = x_n / (K_n + x_n)
+        return result if x >= 0 else -result
     
     @staticmethod
     def relu(x: float) -> float:
