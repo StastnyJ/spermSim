@@ -28,6 +28,21 @@ def closest_point_on_circle(center: Tuple[float, float], radius: float, point: T
 
     return closest_x, closest_y
 
+def point_line_distance(point:Tuple[float,float], line_point:Tuple[float,float], theta: float) -> float:
+    """
+    Distance from point to a line.
+    
+    Line is defined by:
+      - line_point: a point on the line
+      - direction angle theta (radians, measured from x-axis)
+
+    Returns:
+      - perpendicular distance (float)
+    """
+    x, y = point
+    x0, y0 = line_point
+    return abs((y - y0) * math.cos(theta) - (x - x0) * math.sin(theta))
+
 
 def distance_between_points(p1: Tuple[float, float], p2: Tuple[float, float]) -> float:
     return math.hypot(p2[0] - p1[0], p2[1] - p1[1])
@@ -77,7 +92,7 @@ class Sperm(Element):
         )
         self.energy = max(self.energy - self.energy_decay * dt * (speed + rotation), 0.0)
         if self.energy > 0:
-            self.energy = min(self.energy_recovery * dt + self.energy, 1.0)
+            self.energy = min(self.energy_recovery * dt + self.energy, 1.0) 
 
 class WhiteBloodCell(Element):
     def __init__(
@@ -88,15 +103,12 @@ class WhiteBloodCell(Element):
         self.orientation: float = 0.0
 
     def update(self, dt: float, sperm: Sperm):
-        # Zjistíme vzdálenost ke spermii
         dx, dy = sperm.position[0] - self.position[0], sperm.position[1] - self.position[1]
         distance = np.sqrt(dx ** 2 + dy ** 2)
         
-        # Pokud je spermie mimo kruhový dosah, nehýbeme se
         if distance > self.sensor_range:
             return
         
-        # Jinak se pohybujeme směrem ke spermii
         if distance > 0:
             dx, dy = self._max_speed * dx / distance, self._max_speed * dy / distance
             self.position = (
@@ -129,12 +141,37 @@ class Sensor:
         angle_to_element = np.arctan2(dy, dx)
         angle_diff = (angle_to_element - abs_orientation + np.pi) % (2 * np.pi) - np.pi
         return abs(angle_diff) <= self.fov / 2
+    
+class FlowField:
+    def __init__(self, center_point: Tuple[float, float] = (0, 0), strength: float = 0.0, radius: float = 0.0, direction: float = 0.0):
+        self.center_point: Tuple[float, float] = center_point
+        self.strength: float = strength
+        self.radius: float = radius
+        self.direction: float = math.radians(direction)
 
+    def is_in_field(self, position: Tuple[float, float]) -> bool:
+        distance_from_center_line = point_line_distance(position, self.center_point, self.direction)
+        return distance_from_center_line <= self.radius
+    
+    def force_on_sensor(self, cell: Sperm, sensor: Sensor) -> float:
+        abs_x, abs_y, abs_orientation = sensor.get_absolute_position(cell)
+        if not self.is_in_field((abs_x, abs_y)):
+            return 0.0
+        direction_diff = self.direction - abs_orientation
+        if direction_diff < np.pi / 2 or direction_diff > 3 * np.pi / 2:
+            return 0.0
+        force_x = abs(self.strength * np.cos(direction_diff))
+        force_y = abs(self.strength * np.sin(direction_diff))
+        # return max(force_x, force_y)
+        # if direction_diff > np.pi:
+        return force_x
+        # else:
+            # return force_y
 
 class Environment:
 
     def __init__(self, height: float = 0, width: float = 0, ovum: Element = None, sperm_cell: Sperm = None,
-                 white_blood_cells: List[WhiteBloodCell] = None, obstacles: List[Element] = None, dangers: List[Element] = None):
+                 white_blood_cells: List[WhiteBloodCell] = None, obstacles: List[Element] = None, dangers: List[Element] = None, flow_fields: List[FlowField] = None):
         
         self.height: float = height
         self.width: float = width
@@ -143,7 +180,7 @@ class Environment:
         self.white_blood_cells: List[WhiteBloodCell] = white_blood_cells if white_blood_cells is not None else []
         self.obstacles: List[Element] = obstacles if obstacles is not None else []
         self.dangers: List[Element] = dangers if dangers is not None else []
-        # TODO flow fields
+        self.flow_fields: List[FlowField] = flow_fields if flow_fields is not None else []
 
     @staticmethod
     def from_json(json_file: dict, sperm_grn: GRN) -> 'Environment':
@@ -166,7 +203,7 @@ class Environment:
             obstacles=[Element(position=(o["x"], o["y"]), radius=o["radius"]) for o in data["obstacles"]],
             dangers=[Element(position=(d["x"], d["y"]), radius=d["radius"]) for d in data["dangers"]],
             white_blood_cells=[WhiteBloodCell(position=(wbc["x"], wbc["y"]), radius=15, sensor_range=150.0) for wbc in data["white_cells"]],
-            # TODO flow fields
+            flow_fields=[FlowField(center_point=(ff["x"], ff["y"]), strength=ff["strength"], radius=ff["radius"], direction=ff["angle"]) for ff in data["flow_fields"]]
         )
 
     def compute_cell_inputs(self, cell: Sperm) -> dict:
@@ -196,7 +233,11 @@ class Environment:
                     danger_signal = max(danger_signal, 1.0 - dist / sensor.range)
             inputs[f'distance_to_danger_{i}'] = danger_signal
 
-            inputs[f'force_flag_{i}'] = 0.0 # TODO compute force field sensor values
+            force_signal = 0.0
+            # TODO better handling of overlapping flow fields
+            for flow_field in self.flow_fields:
+                force_signal += flow_field.force_on_sensor(cell, sensor)
+            inputs[f'force_flag_{i}'] = force_signal
 
         inputs[f'energy'] = cell.energy
         return inputs
@@ -219,6 +260,19 @@ class Environment:
         if self.sperm_cell and self.sperm_cell.energy <= 0:
             return 'out_of_energy'
         
+        for ff in self.flow_fields:
+            if ff.is_in_field(self.sperm_cell.position):
+                self.sperm_cell.position = (
+                    self.sperm_cell.position[0] + ff.strength * np.cos(ff.direction) * dt,
+                    self.sperm_cell.position[1] + ff.strength * np.sin(ff.direction) * dt
+                )
+            for wbc in self.white_blood_cells:
+                if ff.is_in_field(wbc.position):
+                    wbc.position = (
+                        wbc.position[0] + ff.strength * np.cos(ff.direction) * dt,
+                        wbc.position[1] + ff.strength * np.sin(ff.direction) * dt
+                    )
+
         for obstacle in self.obstacles:
             if self.sperm_cell and self.sperm_cell.is_colliding(obstacle):
                 self.sperm_cell.position = closest_point_on_circle(obstacle.position, obstacle.radius + self.sperm_cell.radius, self.sperm_cell.position)
@@ -226,8 +280,6 @@ class Environment:
             for wbc in self.white_blood_cells:
                 if wbc.is_colliding(obstacle):
                     wbc.position = closest_point_on_circle(obstacle.position, obstacle.radius + wbc.radius, wbc.position)
-
-        # TODO handle flow fields
     
         if self.sperm_cell.position[0] < self.sperm_cell.radius:
             self.sperm_cell.position = (self.sperm_cell.radius, self.sperm_cell.position[1])

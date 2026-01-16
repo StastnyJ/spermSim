@@ -5,6 +5,9 @@ from typing import Tuple, Dict, Any, List
 import numpy as np
 import multiprocessing as mp
 from grn_visualization import run_visualizer
+from time import time
+
+DELTA_TIME = 0.001
 
 class Visualization:
     def __init__(self, environment: Environment, dt: float = 0.1):
@@ -119,7 +122,6 @@ class Visualization:
 
 
     def _add_dirty_rect(self, center: Tuple[int, int], radius: int, margin: int = 10):
-        """Přidá dirty rectangle pro kruh s marginem."""
         x, y = center
         rect = pg.Rect(
             x - radius - margin,
@@ -133,7 +135,6 @@ class Visualization:
             self.dirty_rects.append(rect)
 
     def _add_dirty_line_rect(self, start: Tuple[int, int], end: Tuple[int, int], width: int = 2, margin: int = 10):
-        """Přidá dirty rectangle pro čáru."""
         x1, y1 = start
         x2, y2 = end
         min_x = min(x1, x2) - width - margin
@@ -147,7 +148,6 @@ class Visualization:
             self.dirty_rects.append(rect)
 
     def _add_dirty_polygon_rect(self, points: List[Tuple[int, int]], margin: int = 10):
-        """Přidá dirty rectangle pro polygon."""
         if not points:
             return
         xs = [p[0] for p in points]
@@ -161,6 +161,87 @@ class Visualization:
         rect = rect.clip(screen_rect)
         if rect.width > 0 and rect.height > 0:
             self.dirty_rects.append(rect)
+
+    def _draw_thick_line(self, surface, color, p1, p2, width):
+        """
+        Draw a thick line between p1 and p2 with consistent thickness for any angle.
+        p1, p2: (x,y)
+        width: pixels (int/float)
+        """
+        x1, y1 = p1
+        x2, y2 = p2
+
+        vx = x2 - x1
+        vy = y2 - y1
+        length = (vx*vx + vy*vy) ** 0.5
+        if length == 0:
+            return
+
+        # Perpendicular unit vector
+        px = -vy / length
+        py =  vx / length
+        hw = width / 2.0
+
+        a = (x1 + px*hw, y1 + py*hw)
+        b = (x1 - px*hw, y1 - py*hw)
+        c = (x2 - px*hw, y2 - py*hw)
+        d = (x2 + px*hw, y2 + py*hw)
+
+        pg.draw.polygon(surface, color, [a, b, c, d])
+
+
+    def _draw_infinite_line(self, surface, color, x0, y0, theta, width=1, rect=None):
+        """
+        Draw an infinite 2D line (defined by point (x0,y0) and direction angle theta in radians)
+        clipped to rect (defaults to surface.get_rect()).
+        """
+        if rect is None:
+            rect = surface.get_rect()
+
+        dx = np.cos(theta)
+        dy = np.sin(theta)
+
+        eps = 1e-12
+        points = []
+
+        
+
+        # Intersections with vertical borders: x = rect.left and x = rect.right
+        if abs(dx) > eps:
+            for x in (rect.left - 2 * width, rect.right + 2 * width):
+                t = (x - x0) / dx
+                y = y0 + t * dy
+                if rect.top - 2 * width - 1e-6 <= y <= rect.bottom + 2 * width + 1e-6:
+                    points.append((x, y))
+
+        # Intersections with horizontal borders: y = rect.top and y = rect.bottom
+        if abs(dy) > eps:
+            for y in (rect.top - 2 * width, rect.bottom + 2 * width):
+                t = (y - y0) / dy
+                x = x0 + t * dx
+                if rect.left - 2 * width - 1e-6 <= x <= rect.right + 2 * width + 1e-6:
+                    points.append((x, y))
+
+        # Deduplicate close points (corner hits can create duplicates)
+        uniq = []
+        for p in points:
+            if not any((abs(p[0]-q[0]) < 1e-6 and abs(p[1]-q[1]) < 1e-6) for q in uniq):
+                uniq.append(p)
+
+        if len(uniq) >= 2:
+            # Pick the two farthest points to ensure we span the whole rect
+            best_a, best_b = uniq[0], uniq[1]
+            best_d2 = -1.0
+            for i in range(len(uniq)):
+                for j in range(i+1, len(uniq)):
+                    ax, ay = uniq[i]
+                    bx, by = uniq[j]
+                    d2 = (ax-bx)**2 + (ay-by)**2
+                    if d2 > best_d2:
+                        best_d2 = d2
+                        best_a, best_b = uniq[i], uniq[j]
+
+            self._draw_thick_line(surface, color, best_a, best_b, width)
 
     def _render(self):
         self.frame_counter += 1
@@ -185,6 +266,10 @@ class Visualization:
             for rect in self.prev_dirty_rects:
                 self.screen.fill((255, 255, 255), rect)
 
+        for flow_field in self.environment.flow_fields:
+            x,y = self._env_to_screen(flow_field.center_point)
+            self._draw_infinite_line(self.screen, (0,0,100), x, y, flow_field.direction, int(flow_field.radius * 2 * self.scale))
+
         if self.show_sensors:
             for sensor in self.environment.sperm_cell.sensors:
                 sensor_pos = self._env_to_screen(sensor.get_absolute_position(self.environment.sperm_cell))
@@ -205,7 +290,6 @@ class Visualization:
                 self._add_dirty_polygon_rect(polygon_points)
                 pg.draw.polygon(self.screen, (255, 200, 200), polygon_points)
             
-            # Zobrazení kruhového dosahu bílých krvinek
             for wbc in self.environment.white_blood_cells:
                 wbc_pos = self._env_to_screen(wbc.position)
                 sensor_radius = int(wbc.sensor_range * self.scale)
@@ -217,7 +301,6 @@ class Visualization:
         self._add_dirty_rect(ovum_pos, ovum_radius)
         pg.draw.circle(self.screen, (0, 255, 0), ovum_pos, ovum_radius)
 
-        # Vykreslení spermie s animací
         sperm_pos = self._env_to_screen(self.environment.sperm_cell.position)
         sperm_radius = int(self.environment.sperm_cell.radius * self.scale)
         
@@ -295,8 +378,7 @@ class Visualization:
         i = 0
 
         while True:
-            if i%100 == 0:
-                print(i)
+            start = time()
             for event in pg.event.get():
                 if event.type == pg.QUIT or (event.type == pg.KEYDOWN and event.key == pg.K_ESCAPE) or (event.type == pg.KEYDOWN and event.key == pg.K_q):
                     pg.quit()
@@ -330,3 +412,6 @@ class Visualization:
 
             self._render()
             self._push_grn_update()
+            while time() - start < DELTA_TIME:
+                pass
+
